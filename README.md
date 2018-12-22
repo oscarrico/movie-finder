@@ -1,15 +1,11 @@
 # Movie Finder
-Movie App Stage 1
+Movie App Stage 2
 
-Present the user with a grid arrangement of movie posters upon launch.
-Allow your user to change sort order via a setting:
-* The sort order can be by most popular or by highest-rated
+* Allow users to view and play trailers (either in the youtube app or a web browser).
+* Allow users to read reviews of a selected movie.
+* Allow users to mark a movie as a favorite in the details view by tapping a button (star).
+* Display their favorites collection while offline).
+* Show their favorites collection.
 
-Allow the user to tap on a movie poster and transition to a details screen with additional information such as:
-* original title
-* movie poster image thumbnail
-* A plot synopsis (called overview in the api)
-* user rating (called vote_average in the api)
-* release date.
 
 You have to create a API KEY from https://developers.themoviedb.org/3/movie  and add it to com.udacity.android.moviefinder.data.MovieFinderPreferences class.
