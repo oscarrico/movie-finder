@@ -7,7 +7,7 @@ public class MovieFinderPreferences {
 
     private static final String LANGUAGE_PARAM = "en-US";
     // TODO Add the API KEY
-    private static final String API_KEY = "<API KEY>";
+    private static final String API_KEY = "972e3ffdb61f3aacef4e35b63f30c5c5";
     private static final String POPULAR_DB_API_URL = "popular";
     private static final String TOP_RATED_DB_API_URL = "top_rated";
     private static final String NOW_PLAYING_DB_API_URL = "now_playing";

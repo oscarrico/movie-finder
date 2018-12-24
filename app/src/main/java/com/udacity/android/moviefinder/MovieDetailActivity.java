@@ -21,6 +21,8 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import com.squareup.picasso.Picasso;
+import com.udacity.android.moviefinder.adapters.ReviewAdapter;
+import com.udacity.android.moviefinder.adapters.VideoAdapter;
 import com.udacity.android.moviefinder.data.MovieFinderPreferences;
 import com.udacity.android.moviefinder.database.AppDatabase;
 import com.udacity.android.moviefinder.database.AppExecutors;

@@ -1,4 +1,4 @@
-package com.udacity.android.moviefinder;
+package com.udacity.android.moviefinder.adapters;
 
 import android.content.Context;
 import android.support.annotation.NonNull;
@@ -8,8 +8,8 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.widget.TextView;
 
+import com.udacity.android.moviefinder.R;
 import com.udacity.android.moviefinder.model.MovieReview;
-import com.udacity.android.moviefinder.model.MovieVideo;
 
 import java.util.List;
 

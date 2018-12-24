@@ -1,11 +1,17 @@
 package com.udacity.android.moviefinder;
 
-import android.arch.lifecycle.LiveData;
 import android.arch.lifecycle.Observer;
+import android.arch.lifecycle.ViewModelProviders;
 import android.content.Context;
 import android.content.Intent;
-import android.os.AsyncTask;
+import android.content.SharedPreferences;
+import android.os.PersistableBundle;
+import android.preference.PreferenceManager;
+import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
+import android.support.v4.app.LoaderManager;
+import android.support.v4.content.AsyncTaskLoader;
+import android.support.v4.content.Loader;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
 import android.support.v7.view.menu.MenuView.ItemView;
@@ -19,25 +25,34 @@ import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import com.udacity.android.moviefinder.adapters.MovieAdapter;
 import com.udacity.android.moviefinder.data.MovieFinderPreferences;
 import com.udacity.android.moviefinder.database.AppDatabase;
 import com.udacity.android.moviefinder.database.MovieEntry;
 import com.udacity.android.moviefinder.utilities.MovieJsonUtils;
 import com.udacity.android.moviefinder.utilities.NetworkUtils;
-import com.udacity.android.moviefinder.MovieAdapter.MovieAdapterOnClickHandler;
+import com.udacity.android.moviefinder.adapters.MovieAdapter.MovieAdapterOnClickHandler;
 
 import java.net.URL;
 import java.util.ArrayList;
 import java.util.List;
 
-public class MainActivity extends AppCompatActivity implements MovieAdapterOnClickHandler {
+public class MainActivity extends AppCompatActivity implements LoaderManager.LoaderCallbacks<List<MovieEntry>>,
+        MovieAdapterOnClickHandler {
 
     private static final String TAG = MainActivity.class.getSimpleName();
+    private static final String API_NAME = "api_name";
+    private static final String SORT_ORDER = "sort_order";
+    private static final String DATABASE_SORT = "FAVORITES";
+    private static final int MOVIE_LOADER_ID = 0;
+
     private TextView mErrorMessageDisplay;
     private ProgressBar pbLoadingIndicator;
     private RecyclerView mRecyclerView;
     private MovieAdapter movieAdapter;
     private AppDatabase database;
+    private SharedPreferences sharedPreferences;
+    private SharedPreferences.Editor preferencesEditor;
 
     @Override
     public boolean onCreateOptionsMenu(Menu menu) {
@@ -66,25 +81,57 @@ public class MainActivity extends AppCompatActivity implements MovieAdapterOnCli
         movieAdapter = new MovieAdapter(this);
         mRecyclerView.setAdapter(movieAdapter);
 
-        loadMovieList(MovieFinderPreferences.getPreferredNowPlaying(this));
+        LoaderManager.LoaderCallbacks<List<MovieEntry>> callback = MainActivity.this;
+        sharedPreferences = PreferenceManager.getDefaultSharedPreferences(this);
+        preferencesEditor = sharedPreferences.edit();
+
+        String sortOrder =
+                sharedPreferences.getString(SORT_ORDER, MovieFinderPreferences.getPreferredNowPlaying(this));
+        Log.e(TAG, "Sort Order: " + sortOrder);
+
+        if (sortOrder.equals(DATABASE_SORT)) {
+            loadFavoriteMovies();
+            return;
+        } else {
+            Bundle bundleForLoader = new Bundle();
+            bundleForLoader.putString(API_NAME, sortOrder);
+            getSupportLoaderManager().initLoader(MOVIE_LOADER_ID, bundleForLoader, callback);
+        }
     }
+
+    private void updateSharedPreferences(String newSortOrder) {
+        Log.e(TAG, "Updating Sort Order: " + newSortOrder);
+        preferencesEditor.putString(SORT_ORDER, newSortOrder);
+        preferencesEditor.apply();
+    }
+
+    private void loadMoviesMovies(String apiName) {
+
+        showMovieListView();
+        updateSharedPreferences(apiName);
+        Bundle bundleForLoader = new Bundle();
+        bundleForLoader.putString(API_NAME, apiName);
+
+        LoaderManager loaderManager = getSupportLoaderManager();
+        Loader<String> loader = loaderManager.getLoader(MOVIE_LOADER_ID);
+        if (loader == null) {
+            loaderManager.initLoader(MOVIE_LOADER_ID, bundleForLoader, this);
+        } else {
+            loaderManager.restartLoader(MOVIE_LOADER_ID, bundleForLoader, this);
+        }
+    }
+
 
     private void loadFavoriteMovies() {
         showMovieListView();
-        final LiveData<List<MovieEntry>> movieList = database.movieDAO().loadAllMovies();
-        movieList.observe(this, new Observer<List<MovieEntry>>() {
+        updateSharedPreferences(DATABASE_SORT);
+        MainViewModel viewModel = ViewModelProviders.of(this).get(MainViewModel.class);
+        viewModel.getMovieEntries().observe(this, new Observer<List<MovieEntry>>() {
             @Override
             public void onChanged(@Nullable List<MovieEntry> movieEntries) {
                 movieAdapter.setMovieList(movieEntries);
             }
         });
-    }
-
-    private void loadMovieList(String apiName) {
-        showMovieListView();
-        String language = MovieFinderPreferences.getPreferredLanguage(this);
-        String apiKey = MovieFinderPreferences.getPreferredKey(this);
-        new FetchMovieListTask().execute(language, apiKey, apiName);
     }
 
     private void showMovieListView() {
@@ -102,11 +149,11 @@ public class MainActivity extends AppCompatActivity implements MovieAdapterOnCli
         int itemThatWasClickedId = item.getItemId();
         if (itemThatWasClickedId == R.id.action_most_popular) {
             Toast.makeText(this, "Most Popular Movies", Toast.LENGTH_SHORT).show();
-            loadMovieList(MovieFinderPreferences.getPreferredPopularApi(this));
+            loadMoviesMovies( MovieFinderPreferences.getPreferredPopularApi(this));
             return true;
         } else if(itemThatWasClickedId == R.id.action_highest_rated) {
             Toast.makeText(this, "Highest Rated Movies", Toast.LENGTH_SHORT).show();
-            loadMovieList(MovieFinderPreferences.getPreferredTopRated(this));
+            loadMoviesMovies( MovieFinderPreferences.getPreferredTopRated(this));
             return true;
         } else if(itemThatWasClickedId == R.id.action_favorite) {
             Toast.makeText(this, "Favorite Movies", Toast.LENGTH_SHORT).show();
@@ -129,50 +176,83 @@ public class MainActivity extends AppCompatActivity implements MovieAdapterOnCli
         startActivity(detailActivityIntent);
     }
 
-    class FetchMovieListTask extends AsyncTask<String, Void, List<MovieEntry>> {
+    @NonNull
+    @Override
+    public Loader<List<MovieEntry>> onCreateLoader(int i, @Nullable final Bundle bundle) {
+        return new AsyncTaskLoader<List<MovieEntry>>(this) {
 
-        @Override
-        protected void onPreExecute() {
-            super.onPreExecute();
-            pbLoadingIndicator.setVisibility(View.VISIBLE);
-        }
+            List<MovieEntry> movieEntries;
 
-        @Override
-        protected List<MovieEntry> doInBackground(String... params) {
+            @Override
+            protected void onStartLoading() {
+                if(movieEntries != null) {
+                    deliverResult(movieEntries);
+                } else {
+                    pbLoadingIndicator.setVisibility(View.VISIBLE);
+                    forceLoad();
+                }
 
-            if (params.length == 0) {
-                return null;
             }
 
-            String language = params[0];
-            String apiKey = params[1];
-            String apiName = params[2];
-            URL movieRequestUrl = NetworkUtils.buildDefaultUrl(language, apiKey, apiName);
-            List<MovieEntry> result = new ArrayList<>();
+            @Nullable
+            @Override
+            public List<MovieEntry> loadInBackground() {
 
-            try {
-                String jsonWeatherResponse = NetworkUtils
-                        .getResponseFromHttpUrl(movieRequestUrl);
+                String language = MovieFinderPreferences.getPreferredLanguage(getApplicationContext());
+                String apiKey = MovieFinderPreferences.getPreferredKey(getApplicationContext());
+                String apiName =  bundle.getString(API_NAME);
 
-                result = MovieJsonUtils.getMovieDataFromJson(jsonWeatherResponse);
+                URL movieRequestUrl = NetworkUtils.buildDefaultUrl(language, apiKey, apiName);
+                List<MovieEntry> result = new ArrayList<>();
 
-            } catch (Exception e) {
-                e.printStackTrace();
+                try {
+                    String jsonWeatherResponse = NetworkUtils
+                            .getResponseFromHttpUrl(movieRequestUrl);
+
+                    result = MovieJsonUtils.getMovieDataFromJson(jsonWeatherResponse);
+
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
+
+                return result;
             }
 
-            return result;
-        }
-
-        @Override
-        protected void onPostExecute(List<MovieEntry> movies) {
-            Log.v(TAG, "Movies fetched: " + movies.size());
-            pbLoadingIndicator.setVisibility(View.INVISIBLE);
-            if (movies != null && movies.size() > 0) {
-                showMovieListView();
-                movieAdapter.setMovieList(movies);
-            } else {
-                showErrorMessage();
+            @Override
+            public void deliverResult(@Nullable List<MovieEntry> data) {
+                movieEntries = data;
+                super.deliverResult(data);
             }
-        }
+        };
     }
+
+    @Override
+    public void onLoadFinished(@NonNull Loader<List<MovieEntry>> loader, List<MovieEntry> movieEntries) {
+        Log.v(TAG, "Movies fetched: " + movieEntries.size());
+        pbLoadingIndicator.setVisibility(View.INVISIBLE);
+        if (movieEntries != null && movieEntries.size() > 0) {
+            showMovieListView();
+            movieAdapter.setMovieList(movieEntries);
+        } else {
+            showErrorMessage();
+        }
+
+    }
+
+    @Override
+    protected void onSaveInstanceState(Bundle outState) {
+        super.onSaveInstanceState(outState);
+        String sortOrder =
+                sharedPreferences.getString(SORT_ORDER, MovieFinderPreferences.getPreferredNowPlaying(this));
+        if (sortOrder.equals(DATABASE_SORT)) {
+            Log.e(TAG, "*********AGAIN onSaveInstanceState Sort Order: " + sortOrder);
+            loadFavoriteMovies();
+        }
+
+        Log.e(TAG, "********* onSaveInstanceState Sort Order: " + sortOrder);
+
+    }
+
+    @Override
+    public void onLoaderReset(@NonNull Loader<List<MovieEntry>> loader) {}
 }
